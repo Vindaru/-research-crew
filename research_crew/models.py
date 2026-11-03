@@ -25,3 +25,34 @@ class ResearchNotes(BaseModel):
     question: str
     findings: list[Finding]
     gaps: list[str] = Field(default_factory=list, description="Parts of the question the sources did not answer")
+
+
+class Verdict(BaseModel):
+    """The critic's verdict on one finding."""
+    finding: Finding
+    ok: bool
+    reason: str = Field(description="Why it passed or failed, in one sentence")
+
+
+class Critique(BaseModel):
+    """What the critic hands back: which findings survived, and feedback for the researcher if it must retry."""
+    verdicts: list[Verdict]
+
+    @property
+    def approved(self) -> list[Finding]:
+        return [v.finding for v in self.verdicts if v.ok]
+
+    @property
+    def rejected(self) -> list[Verdict]:
+        return [v for v in self.verdicts if not v.ok]
+
+    def feedback(self) -> str:
+        return "\n".join(f"- REJECTED: {v.finding.claim!r} because {v.reason}" for v in self.rejected)
+
+
+class Report(BaseModel):
+    """The writer's output. `citations[n-1]` is the URL behind every [n] in the text."""
+    question: str
+    text: str
+    citations: list[str]
+    status: str = Field(description="'answered', or 'insufficient_evidence' when the critic approved nothing")

@@ -54,3 +54,11 @@ def test_live_researcher_cites_every_finding():
     assert notes.findings
     for f in notes.findings:
         assert f.source_url.startswith("http") and f.quote.strip()
+
+
+def test_recording_search_keeps_every_page_it_returned(monkeypatch):
+    page = Source(url="https://a.example", title="A", content="Alpha.")
+    monkeypatch.setattr(researcher, "tavily_search", lambda q: [page])
+    seen = []
+    researcher.make_recording_search(seen).invoke({"query": "anything"})
+    assert seen == [page]
