@@ -52,7 +52,7 @@ Around it: golden set, code checks, LLM judge (M3), Langfuse traces, and a CI qu
 ### Step A: run it offline, free, in 2 minutes
 
 ```bash
-git clone https://github.com/Vindaru/research-crew.git
+git clone https://github.com/Vindaru/-research-crew.git research-crew
 cd research-crew
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
