@@ -1,0 +1,40 @@
+# The real thing: Claude + Tavily + LLM judge on the whole golden set. Costs a few cents per run,
+# so it runs on demand (Actions tab -> live-evals -> Run workflow) and once a week, not on every push.
+# Needs repository secrets ANTHROPIC_API_KEY and TAVILY_API_KEY (Settings -> Secrets and variables -> Actions).
+name: live-evals
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * 1"   # Mondays 13:00 UTC: catches drift when the web or the model changes
+
+jobs:
+  live-eval-gate:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+    steps:
+      - name: Check secrets
+        if: env.ANTHROPIC_API_KEY == '' || env.TAVILY_API_KEY == ''
+        run: |
+          echo "::error::Add ANTHROPIC_API_KEY and TAVILY_API_KEY as repository secrets to run live evals."
+          exit 1
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Golden set (live) with LLM judge and quality gate
+        run: >
+          python -m evals.run_evals
+          --min-pass-rate 0.8 --min-faithfulness 1.0
+          --summary "$GITHUB_STEP_SUMMARY" --results eval-results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results-live
+          path: eval-results.json

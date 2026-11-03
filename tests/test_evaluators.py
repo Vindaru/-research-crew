@@ -66,3 +66,9 @@ def test_golden_set_file_matches_the_builder_and_is_well_formed():
 
 def test_crew_output_is_plain_json():
     json.dumps(crew_output(run_crew("What is retrieval-augmented generation?", fake=True)))
+
+
+def test_must_mention_accepts_any_listed_synonym():
+    expected = {**EXPECTED, "must_mention": ["reduce|lower"]}
+    assert must_mention(output=output(answer="Grounding lowers errors [1]"), expected_output=expected).value == 1.0
+    assert must_mention(output=output(answer="Grounding helps [1]"), expected_output=expected).value == 0.0

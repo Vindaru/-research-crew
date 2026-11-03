@@ -1,7 +1,14 @@
 # Research Crew
 
+[![ci](https://github.com/Vindaru/-research-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/Vindaru/-research-crew/actions/workflows/ci.yml)
+[![live-evals](https://github.com/Vindaru/-research-crew/actions/workflows/live-evals.yml/badge.svg)](https://github.com/Vindaru/-research-crew/actions/workflows/live-evals.yml)
+
 A small team of AI agents that answers research questions with **every claim backed by a quoted source**,
 and a test suite that proves it.
+
+**In one line:** Researcher → Critic → Writer, built with LangGraph and Claude, graded on a 13-case golden set
+by code checks and an LLM judge, traced in Langfuse, and **blocked from merging by CI if citation faithfulness
+drops below 100%**. Read the [case study](docs/CASE_STUDY.md).
 
 ```
 Your question
@@ -75,7 +82,10 @@ graph TD;
 | `tests/test_evaluators.py` | Tests for the graders themselves (8 offline) |
 | `tests/test_golden_set.py` | The golden set against the real crew, one test per case (needs keys) |
 | `tests/test_crew.py` | Critic + graph tests with deliberately bad researchers: 10 offline + 1 live |
-| `.github/workflows/tests.yml` | Runs the offline tests on every push |
+| `.github/workflows/ci.yml` | Every push: tests, then the offline eval **quality gate** (scorecard on the run page) |
+| `.github/workflows/live-evals.yml` | On demand + weekly: the real crew + LLM judge on the golden set |
+| `tests/test_quality_gate.py` | Tests that the gate passes/fails at the right thresholds, plus a **sabotage test** |
+| `docs/CASE_STUDY.md` | The write-up: problem, design, results, trade-offs, what's next |
 
 ---
 
@@ -94,12 +104,12 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 
 python main.py --fake "What is retrieval-augmented generation?"
-python -m pytest -q          # expect: 24 passed, 15 skipped
+python -m pytest -q          # expect: 37 passed, 15 skipped
 ```
 
 You'll see how many times the researcher ran, how many findings the critic approved or rejected (and why),
 then the writer's report with `[1]`, `[2]` citations and the URL list. Try a question the fixtures can't answer
-(`python main.py --fake "Who won the 1987 chess olympiad?"`) and the crew says **insufficient_evidence**
+(`python main.py --fake "How many people attended the Glimmerfen Robotics Expo in 2029?"`) and the crew says **insufficient_evidence**
 instead of guessing. Add `--researcher-only` to see just the M1 notes.
 
 To *see* the retry loop without an API key, read `tests/test_crew.py`: `liar_then_honest` is a researcher that
@@ -146,6 +156,49 @@ With Langfuse keys set, the golden set is uploaded as dataset `research-crew-gol
 change a prompt or a model (`RESEARCHER_MODEL=claude-sonnet-5-5 python -m evals.run_evals`) and see whether
 scores, cost and latency went up or down. That's choosing a model with evidence instead of vibes.
 
+### What does it cost?
+
+Every real run prints its cost at the end, counted from the tokens Claude actually used:
+```
+Cost: $0.0041
+  claude-haiku-5-5: 21,310 input + 3,904 output tokens = $0.0041
+```
+(`research_crew/cost.py` keeps the price table; prices are US$ per million tokens.)
+`python -m evals.run_evals` prints the total for the whole golden set. The LLM judge (Sonnet) is extra,
+about 1-2 cents per graded case. Tavily searches use your free monthly credits.
+Your real bill: console.anthropic.com → Usage / Cost, and app.tavily.com → Usage. With Langfuse on,
+every trace shows its own token cost too.
+
+### Step E: the quality gate in CI
+
+Every push runs `.github/workflows/ci.yml`: first the tests, then the **eval-gate** job, which runs the golden set
+through the offline crew and fails if fewer than 90% of cases pass or if citation faithfulness is below 100%.
+Open any run in the **Actions** tab and the scorecard table is right on the summary page.
+
+Try it locally, the same way CI does:
+```bash
+python -m evals.run_evals --fake --min-pass-rate 0.9 --min-faithfulness 1.0   # GATE PASSED, exit 0
+python -m evals.run_evals --fake                                              # strict 100%: GATE FAILED, exit 1
+```
+
+**Make it block merges:** GitHub → repo Settings → Branches → Add rule for `main` →
+"Require status checks to pass" → pick **eval-gate**. Now a PR that makes the crew worse can't be merged.
+
+**See it bite:** `tests/test_quality_gate.py::test_sabotaged_critic_is_caught_by_the_evals` swaps in a critic
+that approves everything and a researcher that invents a quote. The independent faithfulness grader scores 0%
+and the gate fails. A gate you've never seen fail is decoration.
+
+**Live evals:** add `ANTHROPIC_API_KEY` and `TAVILY_API_KEY` under Settings → Secrets and variables → Actions,
+then Actions → **live-evals** → Run workflow. It also runs every Monday, which catches drift when the web or
+the model changes even though your code didn't.
+
+### Record a 30-second demo (for LinkedIn / your resume)
+
+1. Make the terminal big (Cmd + +), run `clear`.
+2. Press Cmd + Shift + 5 → "Record selected portion" → select the terminal.
+3. Run `python main.py "What changed in the EU AI Act in 2026?"`, then `python -m evals.run_evals --fake --min-pass-rate 0.9`.
+4. Stop recording, trim in QuickTime, save as `docs/demo.mov` (or convert to GIF at ezgif.com) and link it here.
+
 ### Where this pattern is used in real life
 
 - **Analyst and market research:** "summarise what competitors launched this quarter, with sources".
@@ -160,4 +213,4 @@ scores, cost and latency went up or down. That's choosing a model with evidence 
 - [x] **M1** Researcher agent with web search, structured cited output, Langfuse tracing, offline tests
 - [x] **M2** LangGraph graph: researcher → critic → writer, with a retry loop and a "not enough evidence" exit
 - [x] **M3** Golden set (13 cases, 6 categories), code checks (citation faithfulness) + LLM judge + Langfuse experiments
-- [ ] **M4** CI eval gate, demo GIF, write-up
+- [x] **M4** CI eval gate with thresholds, weekly live evals, sabotage test, case study (demo recording: your turn!)

@@ -6,6 +6,8 @@
 """
 import argparse
 
+from research_crew.cost import cost_summary, format_cost
+
 from research_crew.graph import run_crew
 from research_crew.researcher import research, research_fake
 
@@ -42,6 +44,8 @@ def main():
         print_notes((research_fake if args.fake else research)(args.question))
     else:
         print_crew(run_crew(args.question, fake=args.fake))
+    if not args.fake:
+        print("\n" + format_cost(cost_summary()))
 
 
 if __name__ == "__main__":

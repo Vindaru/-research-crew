@@ -30,7 +30,7 @@ def test_every_quote_appears_word_for_word_in_its_source():
 
 
 def test_no_sources_means_a_gap_not_a_guess():
-    notes = research_fake("Who won the 1987 chess olympiad?")
+    notes = research_fake("How many people attended the Glimmerfen Robotics Expo in 2029?")
     assert notes.findings == []
     assert notes.gaps, "with no sources the researcher must report a gap"
 
