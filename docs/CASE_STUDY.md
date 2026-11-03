@@ -37,7 +37,7 @@ question ─► Researcher ─► Critic ─┬─► Writer ─► cited report
 | Grader tests | Each grader is fed an output with one known defect and must catch it | Every push, free |
 | **Sabotage test** | Replace the critic with a rubber stamp; the independent faithfulness grader and the gate must fail | Every push, free |
 | Golden set, offline | 13 cases × 5 code checks through a fake crew, with a quality gate | Every push (`eval-gate` check) |
-| Golden set, live | Real Claude + Tavily + LLM judge (DeepEval GEval, Claude Sonnet), traced in Langfuse | On demand + weekly |
+| Golden set, live | Real Claude + Tavily + LLM judge (DeepEval GEval, Claude Sonnet), traced in Langfuse | On demand only, with a $ budget |
 
 **Golden set categories:** happy path, multi-source, unanswerable, false premise, prompt injection, vague.
 Web answers change, so cases store *properties* of a good answer (status, minimum citations, must / must-not
@@ -66,6 +66,12 @@ three kinds of bug, which is the point of running evals before trusting an agent
 | `unanswerable-01` answered | **A bug in the golden set.** "Who won the 1987 chess olympiad?" is on Wikipedia. The case was wrong, not the agent | Replaced with a made-up event |
 | `must_mention` / `must_not_say` misses (2 cases) | Keywords tuned to the offline fixtures; and "was discontinued" also matched the *correct* answer "no evidence it was discontinued" | Synonym lists (`reduce\|lower`), and must-not-say targets agreeing phrasing ("discontinued because"); meaning is left to the LLM judge |
 | `deepeval` not found (1 case) | Local environment not reinstalled after a dependency was added | `uv pip install -r requirements.txt` |
+
+**Cost lesson:** those first two live runs cost about **$15**, roughly 50× my estimate, and hit the account's
+monthly limit. The estimate assumed short agent loops and ignored that thinking tokens are billed as output and
+that nothing *enforced* the search limit. Fixes: live tests are opt-in (`RUN_LIVE_TESTS=1`), a budget guard stops
+any run at a set dollar amount, agents and judge run at low effort with output caps, searches are capped in code,
+and every run prints its real cost. Treat cost like latency: measure it, gate it, never estimate it.
 
 **Lesson:** a failing eval has three suspects (the agent, the grader, and the test case), and each one was guilty
 at least once here. Offline fixtures can't find any of these; only a live run can.

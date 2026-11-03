@@ -6,7 +6,7 @@ import os
 import re
 
 from research_crew.models import Finding, Report
-from research_crew.tracing import langfuse_callbacks
+from research_crew.tracing import AGENT_EFFORT, AGENT_MAX_TOKENS, langfuse_callbacks
 
 WRITER_MODEL = os.getenv("WRITER_MODEL", "claude-haiku-5-5")
 
@@ -37,7 +37,7 @@ def write(question: str, findings: list[Finding], gaps: list[str] | None = None,
     numbered = "\n".join(f"[{urls.index(f.source_url) + 1}] {f.claim}" for f in findings)
     missing = "\n".join(f"- {g}" for g in gaps or [])
     user = f"QUESTION: {question}\n\nFINDINGS:\n{numbered}" + (f"\n\nKNOWN GAPS:\n{missing}" if missing else "")
-    reply = ChatAnthropic(model=WRITER_MODEL).invoke(
+    reply = ChatAnthropic(model=WRITER_MODEL, max_tokens=AGENT_MAX_TOKENS, output_config={"effort": AGENT_EFFORT}).invoke(
         [("system", WRITER_PROMPT), ("user", user)],
         config={"callbacks": callbacks if callbacks is not None else langfuse_callbacks(), "run_name": "writer"})
     text = reply.content if isinstance(reply.content, str) else "".join(

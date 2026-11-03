@@ -1,17 +1,16 @@
-"""The golden set as a pytest suite against the REAL crew: one test per case. Needs API keys (skips otherwise).
+"""The golden set as a pytest suite against the REAL crew: one test per case. COSTS MONEY, opt-in only.
 
-  python -m pytest -q tests/test_golden_set.py
+  RUN_LIVE_TESTS=1 python -m pytest -q tests/test_golden_set.py
+Prefer `python -m evals.run_evals` for a priced run: same cases, same graders, plus a scorecard and total cost.
 """
-import os
-
 import pytest
 
 from evals.evaluators import DETERMINISTIC, crew_output, llm_judge
 from evals.run_evals import JUDGE_PASS, as_item, load_golden_set
 from research_crew.graph import run_crew
+from tests.live import live
 
-pytestmark = pytest.mark.skipif(not (os.getenv("ANTHROPIC_API_KEY") and os.getenv("TAVILY_API_KEY")),
-                                reason="needs ANTHROPIC_API_KEY and TAVILY_API_KEY")
+pytestmark = [pytest.mark.live, live]
 
 
 @pytest.mark.parametrize("case", load_golden_set(), ids=lambda c: c["id"])

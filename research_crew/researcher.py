@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 
 from research_crew.models import Finding, ResearchNotes, Source
 from research_crew.search import fake_search, tavily_search
-from research_crew.tracing import langfuse_callbacks
+from research_crew.tracing import AGENT_EFFORT, AGENT_MAX_TOKENS, langfuse_callbacks
 
 RESEARCHER_MODEL = os.getenv("RESEARCHER_MODEL", "claude-haiku-5-5")
 MAX_SEARCHES = 3
@@ -67,8 +67,16 @@ def research_with_sources(question: str, feedback: str = "", callbacks=None) -> 
     from langchain_anthropic import ChatAnthropic
 
     seen: list[Source] = []
-    agent = create_agent(ChatAnthropic(model=RESEARCHER_MODEL), tools=[make_recording_search(seen)],
-                         system_prompt=SYSTEM_PROMPT, response_format=ResearchNotes)
+    from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
+
+    # Hard caps, enforced by code (the prompt's "at most 3 searches" is only a request):
+    #   - at most MAX_SEARCHES web searches per attempt, then the agent must answer with what it has
+    #   - at most MAX_SEARCHES + 3 model calls per attempt, then the run ends
+    agent = create_agent(ChatAnthropic(model=RESEARCHER_MODEL, max_tokens=AGENT_MAX_TOKENS, output_config={"effort": AGENT_EFFORT}),
+                         tools=[make_recording_search(seen)], system_prompt=SYSTEM_PROMPT,
+                         response_format=ResearchNotes,
+                         middleware=[ToolCallLimitMiddleware(run_limit=MAX_SEARCHES, exit_behavior="continue"),
+                                     ModelCallLimitMiddleware(run_limit=MAX_SEARCHES + 3, exit_behavior="end")])
     prompt = question if not feedback else (
         f"{question}\n\nYour previous findings were checked and these were rejected:\n{feedback}\n"
         "Search again and replace them with findings whose quotes appear word for word in a source.")

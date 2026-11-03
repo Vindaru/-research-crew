@@ -8,6 +8,7 @@ import os
 import pytest
 
 from research_crew.critic import code_check, critique_fake
+from tests.live import live
 from research_crew.graph import build_graph, run_crew
 from research_crew.models import Finding, ResearchNotes, Source
 from research_crew.writer import cited_numbers, write_fake
@@ -101,8 +102,8 @@ def test_fake_crew_says_not_enough_evidence_when_nothing_is_found():
     assert state["report"].status == "insufficient_evidence"
 
 
-@pytest.mark.skipif(not (os.getenv("ANTHROPIC_API_KEY") and os.getenv("TAVILY_API_KEY")),
-                    reason="needs ANTHROPIC_API_KEY and TAVILY_API_KEY")
+@pytest.mark.live
+@live
 def test_live_crew_report_cites_only_approved_sources():
     state = run_crew("What is retrieval-augmented generation and who introduced it?")
     report = state["report"]
