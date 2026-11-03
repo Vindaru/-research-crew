@@ -7,7 +7,7 @@ and a test suite that proves it.
 Your question
      │
      ▼
-Researcher ──► searches the web, writes notes: fact + link + exact quote      ◄── M1 (this milestone)
+Researcher ──► searches the web, writes notes: fact + link + exact quote      ◄── M1
      │
      ▼
 Critic ──────► checks each fact against its quote. Weak? ──► back to Researcher   ◄── M2
@@ -17,6 +17,19 @@ Writer ──────► short report, every sentence cited                 
 ```
 
 Around it: golden set, code checks, LLM judge (M3), Langfuse traces, and a CI quality gate (M4).
+
+The real graph, as LangGraph draws it (dotted arrows are decisions the code makes after the critic runs):
+
+```mermaid
+graph TD;
+  START([start]) --> researcher;
+  researcher --> critic;
+  critic -. "some rejected and attempts left (max 3)" .-> researcher;
+  critic -. "approved findings" .-> writer;
+  critic -. "nothing approved, out of attempts" .-> give_up;
+  writer --> END([end]);
+  give_up --> END;
+```
 
 ---
 
@@ -30,6 +43,11 @@ Around it: golden set, code checks, LLM judge (M3), Langfuse traces, and a CI qu
 | **Gaps** | "I couldn't find this in any book" instead of making it up. | The `gaps` list. Honest "don't know" beats a confident guess. |
 | **Fake mode** | Practising with three pretend books at home before going to the real library. | `research_fake` + `tests/fixtures`: no API key, no cost, same result every run. |
 | **Langfuse** | A camera recording every book the kid opened and how long it took. | Traces of every LLM call and tool call, with cost and latency. |
+| **Critic** (M2) | Mom checking the homework. First with a ruler: "is this sentence really in that book?" Then by reading: "does that sentence really say what you wrote?" | `critic.py`: a free code check (quote is word for word in a page the search returned), then one Claude call that judges whether the quote *supports* the claim. |
+| **Retry loop** (M2) | Mom hands the homework back: "these two are wrong, go fix them". At most 3 tries. | A LangGraph edge that points back to the researcher, carrying the critic's feedback. |
+| **Writer** (M2) | The kid's big sister writes the final paragraph, using only the facts Mom ticked. She never goes to the library herself. | `writer.py`: Claude writes from approved findings only, with `[n]` citations. |
+| **Give up** (M2) | "I couldn't find enough good books, so I won't make up an answer." | The `give_up` node: status `insufficient_evidence`, no citations. |
+| **LangGraph** (M2) | The chore chart on the fridge: who goes after whom, and when to go back a step. | `graph.py`: nodes share one `state` dict; edges (some conditional) pick the next node. |
 
 ---
 
@@ -41,8 +59,12 @@ Around it: golden set, code checks, LLM judge (M3), Langfuse traces, and a CI qu
 | `research_crew/search.py` | Real search (Tavily) and fake search (fixtures) with the same shape |
 | `research_crew/researcher.py` | The Researcher: system prompt, `web_search` tool, `research()` and `research_fake()` |
 | `research_crew/tracing.py` | Turns on Langfuse only if keys are set |
-| `main.py` | Ask a question from your terminal |
-| `tests/test_researcher.py` | 5 offline tests + 1 live test (skips without keys) |
+| `research_crew/critic.py` | The Critic: code check + LLM support check, returns a `Critique` with per-finding verdicts |
+| `research_crew/writer.py` | The Writer, plus the honest "not enough evidence" report |
+| `research_crew/graph.py` | The LangGraph graph that wires all three together, with the retry loop |
+| `main.py` | Ask a question from your terminal (`--fake` offline, `--researcher-only` for M1) |
+| `tests/test_researcher.py` | Researcher tests: 6 offline + 1 live |
+| `tests/test_crew.py` | Critic + graph tests with deliberately bad researchers: 10 offline + 1 live |
 | `.github/workflows/tests.yml` | Runs the offline tests on every push |
 
 ---
@@ -62,11 +84,17 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 
 python main.py --fake "What is retrieval-augmented generation?"
-pytest -q          # expect: 5 passed, 1 skipped
+python -m pytest -q          # expect: 16 passed, 2 skipped
 ```
 
-You'll see numbered findings, each with a source URL and the exact quote. Try a question the fixtures
-can't answer (`python main.py --fake "Who won the 1987 chess olympiad?"`) and you get a **GAP** instead of a guess.
+You'll see how many times the researcher ran, how many findings the critic approved or rejected (and why),
+then the writer's report with `[1]`, `[2]` citations and the URL list. Try a question the fixtures can't answer
+(`python main.py --fake "Who won the 1987 chess olympiad?"`) and the crew says **insufficient_evidence**
+instead of guessing. Add `--researcher-only` to see just the M1 notes.
+
+To *see* the retry loop without an API key, read `tests/test_crew.py`: `liar_then_honest` is a researcher that
+invents a quote on its first try. The test shows the critic rejecting it, the researcher getting the feedback,
+and the bad claim never reaching the report.
 
 ### Step B: the real thing (Claude + live web)
 
@@ -77,18 +105,19 @@ can't answer (`python main.py --fake "Who won the 1987 chess olympiad?"`) and yo
 ```bash
 set -a && source .env && set +a
 python main.py "What changed in the EU AI Act in 2026?"
-pytest -q          # now the live test runs too: 6 passed
+python -m pytest -q          # now the live tests run too: 18 passed
 ```
 
 ### Step C: watch it think (Langfuse)
 
 Start your local Langfuse (the same one ClaimStream uses), put its keys in `.env`, and run Step B again.
-Open Langfuse → **Traces** → the newest `researcher` trace. You'll see the loop:
-LLM decides a search → `web_search` call and its results → maybe another search → final structured notes,
-with tokens, cost and seconds for each step.
+Open Langfuse → **Traces** → the newest `research-crew` trace. Inside it you'll see one span per graph node:
+`researcher` (its searches and the structured notes), `critic` (the verdicts), maybe `researcher` again,
+then `writer` or `give_up`, with tokens, cost and seconds for each.
 
-**What to look for:** how many searches it used, whether each quote really appears in the tool output,
-and which step was slowest. That's how you debug an agent.
+**What to look for:** how many attempts it took, *which* findings the critic rejected and why,
+whether the writer cited only approved sources, and which node was slowest or most expensive.
+That's how you debug a multi-agent system: find the agent that went wrong, not just the final answer.
 
 ### Where this pattern is used in real life
 
@@ -102,6 +131,6 @@ and which step was slowest. That's how you debug an agent.
 ## 4. Milestones
 
 - [x] **M1** Researcher agent with web search, structured cited output, Langfuse tracing, offline tests
-- [ ] **M2** LangGraph graph: researcher → critic → writer, with a retry loop and a "not enough evidence" exit
+- [x] **M2** LangGraph graph: researcher → critic → writer, with a retry loop and a "not enough evidence" exit
 - [ ] **M3** Golden set (~15 questions), code checks (citation faithfulness) + LLM judge
 - [ ] **M4** CI eval gate, demo GIF, write-up

@@ -28,23 +28,54 @@ Rules:
 4. Prefer 3 to 6 findings. Each claim is one short factual sentence."""
 
 
-@tool
-def web_search(query: str) -> str:
-    """Search the web. Returns up to 5 pages, each with url, title and a content snippet."""
-    results = tavily_search(query)
+def format_results(results: list[Source]) -> str:
     return "\n\n".join(f"URL: {s.url}\nTITLE: {s.title}\nCONTENT: {s.content}" for s in results) or "No results."
 
 
+@tool
+def web_search(query: str) -> str:
+    """Search the web. Returns up to 5 pages, each with url, title and a content snippet."""
+    return format_results(tavily_search(query))
+
+
+def make_recording_search(seen: list[Source]):
+    """Same tool, but every page it returns is also written into `seen`.
+
+    That list is the evidence locker: the critic only trusts quotes that appear in a page from it.
+    """
+    @tool("web_search")
+    def recording_search(query: str) -> str:
+        """Search the web. Returns up to 5 pages, each with url, title and a content snippet."""
+        results = tavily_search(query)
+        seen.extend(results)
+        return format_results(results)
+
+    return recording_search
+
+
 def research(question: str, callbacks=None) -> ResearchNotes:
-    """Run the real researcher (Claude + Tavily)."""
+    """Run the real researcher (Claude + Tavily). M1 entry point: notes only."""
+    notes, _ = research_with_sources(question, callbacks=callbacks)
+    return notes
+
+
+def research_with_sources(question: str, feedback: str = "", callbacks=None) -> tuple[ResearchNotes, list[Source]]:
+    """Run the real researcher and also return every page it was shown. Used by the M2 graph.
+
+    `feedback` is the critic's list of rejected findings from the previous attempt, if any.
+    """
     from langchain_anthropic import ChatAnthropic
 
-    agent = create_agent(ChatAnthropic(model=RESEARCHER_MODEL), tools=[web_search],
+    seen: list[Source] = []
+    agent = create_agent(ChatAnthropic(model=RESEARCHER_MODEL), tools=[make_recording_search(seen)],
                          system_prompt=SYSTEM_PROMPT, response_format=ResearchNotes)
-    result = agent.invoke({"messages": [{"role": "user", "content": question}]},
+    prompt = question if not feedback else (
+        f"{question}\n\nYour previous findings were checked and these were rejected:\n{feedback}\n"
+        "Search again and replace them with findings whose quotes appear word for word in a source.")
+    result = agent.invoke({"messages": [{"role": "user", "content": prompt}]},
                           config={"callbacks": callbacks if callbacks is not None else langfuse_callbacks(),
                                   "run_name": "researcher"})
-    return result["structured_response"]
+    return result["structured_response"], seen
 
 
 def research_fake(question: str, callbacks=None) -> ResearchNotes:
@@ -59,3 +90,8 @@ def research_fake(question: str, callbacks=None) -> ResearchNotes:
         findings.append(Finding(claim=first_sentence, source_url=s.url, quote=first_sentence.rstrip(".")))
     gaps = [] if findings else [f"No sources found for: {question}"]
     return ResearchNotes(question=question, findings=findings, gaps=gaps)
+
+
+def research_fake_with_sources(question: str, feedback: str = "", callbacks=None):
+    """Offline version of research_with_sources, for the M2 graph."""
+    return research_fake(question), fake_search(question)
