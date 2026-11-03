@@ -5,3 +5,4 @@ langfuse>=3.0
 tavily-python>=0.5
 pydantic>=2.0
 pytest>=8.0
+deepeval>=3.0
