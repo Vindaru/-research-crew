@@ -1,11 +1,14 @@
-# The real thing: Claude + Tavily + LLM judge on the whole golden set. Costs a few cents per run,
-# so it runs on demand (Actions tab -> live-evals -> Run workflow) and once a week, not on every push.
+# The real thing: Claude + Tavily + LLM judge on the whole golden set. COSTS MONEY, so it only runs when you
+# start it by hand (Actions tab -> live-evals -> Run workflow). No schedule: nothing here spends on its own.
+# The budget guard stops the run once it has spent RESEARCH_CREW_MAX_USD.
 # Needs repository secrets ANTHROPIC_API_KEY and TAVILY_API_KEY (Settings -> Secrets and variables -> Actions).
 name: live-evals
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 13 * * 1"   # Mondays 13:00 UTC: catches drift when the web or the model changes
+    inputs:
+      max_usd:
+        description: "Stop the run after spending this many US dollars"
+        default: "1.00"
 
 jobs:
   live-eval-gate:
@@ -16,6 +19,7 @@ jobs:
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+      RESEARCH_CREW_MAX_USD: ${{ inputs.max_usd }}
     steps:
       - name: Check secrets
         if: env.ANTHROPIC_API_KEY == '' || env.TAVILY_API_KEY == ''

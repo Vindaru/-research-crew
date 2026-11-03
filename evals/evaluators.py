@@ -11,11 +11,13 @@ import os
 
 from langfuse import Evaluation
 
+from research_crew.cost import add_judge_cost, check_budget
 from research_crew.critic import code_check
 from research_crew.models import Finding, Source
 from research_crew.writer import cited_numbers
 
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "claude-sonnet-5-5")
+JUDGE_EFFORT = os.getenv("JUDGE_EFFORT", "low")  # Sonnet 5.5 thinks at "high" by default; grading needs far less
 
 
 def crew_output(state) -> dict:
@@ -81,9 +83,10 @@ def llm_judge(*, input, output, expected_output, **kwargs):
     from deepeval.models import AnthropicModel
     from deepeval.test_case import LLMTestCase, SingleTurnParams
 
+    check_budget()
     metric = GEval(
         name="grounded_and_useful",
-        model=AnthropicModel(model=JUDGE_MODEL),
+        model=AnthropicModel(model=JUDGE_MODEL, generation_kwargs={"max_tokens": 4096, "output_config": {"effort": JUDGE_EFFORT}}),
         evaluation_steps=[
             "Every factual sentence in the ACTUAL OUTPUT must be supported by the CONTEXT quotes. "
             "Penalize heavily any fact, number, name or date that is not in the CONTEXT.",
@@ -100,6 +103,7 @@ def llm_judge(*, input, output, expected_output, **kwargs):
     test_case = LLMTestCase(input=input, actual_output=output["answer"],
                             expected_output=expected_output["reference_answer"], context=context)
     metric.measure(test_case)
+    add_judge_cost(getattr(metric, "evaluation_cost", None))
     return Evaluation(name="llm_judge", value=round(metric.score, 2), comment=metric.reason)
 
 

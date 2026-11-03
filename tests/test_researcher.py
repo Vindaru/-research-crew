@@ -7,6 +7,7 @@ import os
 import pytest
 
 from research_crew import researcher
+from tests.live import live
 from research_crew.models import Source
 from research_crew.search import fake_search
 from research_crew.researcher import research, research_fake
@@ -47,8 +48,8 @@ def test_web_search_tool_says_so_when_empty(monkeypatch):
     assert researcher.web_search.invoke({"query": "anything"}) == "No results."
 
 
-@pytest.mark.skipif(not (os.getenv("ANTHROPIC_API_KEY") and os.getenv("TAVILY_API_KEY")),
-                    reason="needs ANTHROPIC_API_KEY and TAVILY_API_KEY")
+@pytest.mark.live
+@live
 def test_live_researcher_cites_every_finding():
     notes = research("What is retrieval-augmented generation and who introduced it?")
     assert notes.findings

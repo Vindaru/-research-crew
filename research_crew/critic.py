@@ -12,7 +12,7 @@ import re
 from pydantic import BaseModel, Field
 
 from research_crew.models import Critique, Finding, ResearchNotes, Source, Verdict
-from research_crew.tracing import langfuse_callbacks
+from research_crew.tracing import AGENT_EFFORT, AGENT_MAX_TOKENS, langfuse_callbacks
 
 CRITIC_MODEL = os.getenv("CRITIC_MODEL", "claude-haiku-5-5")
 
@@ -75,7 +75,7 @@ def critique(notes: ResearchNotes, sources: list[Source], callbacks=None, llm=No
     if llm is None:
         from langchain_anthropic import ChatAnthropic
 
-        llm = ChatAnthropic(model=CRITIC_MODEL).with_structured_output(SupportCheck)
+        llm = ChatAnthropic(model=CRITIC_MODEL, max_tokens=AGENT_MAX_TOKENS, output_config={"effort": AGENT_EFFORT}).with_structured_output(SupportCheck)
     config = {"callbacks": callbacks if callbacks is not None else langfuse_callbacks(), "run_name": "critic"}
     verdicts = []
     for finding in notes.findings:

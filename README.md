@@ -83,7 +83,7 @@ graph TD;
 | `tests/test_golden_set.py` | The golden set against the real crew, one test per case (needs keys) |
 | `tests/test_crew.py` | Critic + graph tests with deliberately bad researchers: 10 offline + 1 live |
 | `.github/workflows/ci.yml` | Every push: tests, then the offline eval **quality gate** (scorecard on the run page) |
-| `.github/workflows/live-evals.yml` | On demand + weekly: the real crew + LLM judge on the golden set |
+| `.github/workflows/live-evals.yml` | On demand only, with a dollar limit: the real crew + LLM judge on the golden set |
 | `tests/test_quality_gate.py` | Tests that the gate passes/fails at the right thresholds, plus a **sabotage test** |
 | `docs/CASE_STUDY.md` | The write-up: problem, design, results, trade-offs, what's next |
 
@@ -125,7 +125,8 @@ and the bad claim never reaching the report.
 ```bash
 set -a && source .env && set +a
 python main.py "What changed in the EU AI Act in 2026?"
-python -m pytest -q          # now the live tests run too (the 13 golden cases take a few minutes)
+python -m pytest -q          # still free: live tests are skipped unless you opt in
+RUN_LIVE_TESTS=1 python -m pytest -q -m live   # COSTS MONEY: real Claude + Tavily (see "What does it cost?")
 ```
 
 ### Step C: watch it think (Langfuse)
@@ -156,7 +157,14 @@ With Langfuse keys set, the golden set is uploaded as dataset `research-crew-gol
 change a prompt or a model (`RESEARCHER_MODEL=claude-sonnet-5-5 python -m evals.run_evals`) and see whether
 scores, cost and latency went up or down. That's choosing a model with evidence instead of vibes.
 
-### What does it cost?
+### What does it cost? (read this before any live run)
+
+> **Lesson learned the hard way:** the first two live test runs cost about **$15**, roughly 50× the estimate,
+> and hit the account's monthly API limit. Since then: live tests run **only** with `RUN_LIVE_TESTS=1`,
+> every run **stops itself** at `RESEARCH_CREW_MAX_USD` (default $1.00), agents run at low effort with a 4,096
+> output-token cap and a hard limit of 3 searches, the judge runs at low effort, and the live CI workflow
+> runs only when you click it. Also set a monthly spend limit in the Anthropic Console (Settings → Limits).
+
 
 Every real run prints its cost at the end, counted from the tokens Claude actually used:
 ```
@@ -189,8 +197,7 @@ that approves everything and a researcher that invents a quote. The independent 
 and the gate fails. A gate you've never seen fail is decoration.
 
 **Live evals:** add `ANTHROPIC_API_KEY` and `TAVILY_API_KEY` under Settings → Secrets and variables → Actions,
-then Actions → **live-evals** → Run workflow. It also runs every Monday, which catches drift when the web or
-the model changes even though your code didn't.
+then Actions → **live-evals** → Run workflow, and choose the dollar limit for that run. It never runs on its own.
 
 ### Record a 30-second demo (for LinkedIn / your resume)
 
@@ -213,4 +220,4 @@ the model changes even though your code didn't.
 - [x] **M1** Researcher agent with web search, structured cited output, Langfuse tracing, offline tests
 - [x] **M2** LangGraph graph: researcher → critic → writer, with a retry loop and a "not enough evidence" exit
 - [x] **M3** Golden set (13 cases, 6 categories), code checks (citation faithfulness) + LLM judge + Langfuse experiments
-- [x] **M4** CI eval gate with thresholds, weekly live evals, sabotage test, case study (demo recording: your turn!)
+- [x] **M4** CI eval gate with thresholds, on-demand live evals with a budget, sabotage test, case study (demo recording: your turn!)
