@@ -1,0 +1,26 @@
+[
+  {
+    "keywords": ["rag", "retrieval-augmented", "retrieval", "generation"],
+    "url": "https://example.org/rag-explained",
+    "title": "Retrieval-augmented generation, explained",
+    "content": "Retrieval-augmented generation (RAG) gives a language model relevant documents at question time so it can answer from them. It reduces made-up answers when the documents contain the facts. The idea was introduced in a 2020 paper by Lewis et al."
+  },
+  {
+    "keywords": ["rag", "retrieval-augmented", "retrieval", "embeddings", "vector"],
+    "url": "https://example.org/vector-search",
+    "title": "How vector search finds the right documents",
+    "content": "Vector search turns text into embeddings and finds the documents whose embeddings are closest to the question. It is the most common retrieval step in RAG systems. Keyword search is often combined with it."
+  },
+  {
+    "keywords": ["langgraph", "agents", "agent", "multi-agent"],
+    "url": "https://example.org/langgraph-intro",
+    "title": "What is LangGraph?",
+    "content": "LangGraph lets developers describe an AI workflow as a graph of steps that share state. Edges can loop back, which makes retry and review loops possible. It is built by the LangChain team."
+  },
+  {
+    "keywords": ["evals", "evaluation", "llm-as-judge", "judge", "agents"],
+    "url": "https://example.org/llm-evals",
+    "title": "Evaluating LLM apps",
+    "content": "LLM evaluation combines deterministic checks with model-graded checks against a fixed golden dataset. Running the same golden set on every change catches regressions. Model graders need a written rubric to be consistent."
+  }
+]
