@@ -6,6 +6,7 @@ Two versions with the same signature:
 """
 import json
 import os
+import re
 from pathlib import Path
 
 from research_crew.models import Source
@@ -24,6 +25,6 @@ def tavily_search(query: str, max_results: int = 5) -> list[Source]:
 def fake_search(query: str, max_results: int = 5) -> list[Source]:
     """Return the fixture pages whose keywords appear in the query. No match -> no results (that's a test case too)."""
     pages = json.loads(FIXTURES.read_text())
-    words = set(query.lower().split())
+    words = set(re.findall(r"[a-z0-9-]+", query.lower()))
     hits = [p for p in pages if words & set(p["keywords"])]
     return [Source(url=p["url"], title=p["title"], content=p["content"]) for p in hits[:max_results]]

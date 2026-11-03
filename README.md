@@ -47,6 +47,11 @@ graph TD;
 | **Retry loop** (M2) | Mom hands the homework back: "these two are wrong, go fix them". At most 3 tries. | A LangGraph edge that points back to the researcher, carrying the critic's feedback. |
 | **Writer** (M2) | The kid's big sister writes the final paragraph, using only the facts Mom ticked. She never goes to the library herself. | `writer.py`: Claude writes from approved findings only, with `[n]` citations. |
 | **Give up** (M2) | "I couldn't find enough good books, so I won't make up an answer." | The `give_up` node: status `insufficient_evidence`, no citations. |
+| **Golden set** (M3) | The answer key the teacher writes *before* the test. For research it can't be exact words (the web changes), so it lists what a good answer must have: "says *documents*", "cites 2 books", "never says *impossible*". | `evals/golden_set.jsonl`: 13 cases in 6 categories, built by `evals/build_golden_set.py`. |
+| **Code checks** (M3) | A ruler. Same answer every time, free. | `evals/evaluators.py`: status, citation faithfulness, citations valid, must mention, must not say. |
+| **Citation faithfulness** (M3) | "Of all the sentences you copied, how many are really in the book?" Should be 100%. | The headline metric. Re-checked by the eval, independently of the critic, so a weakened critic can't hide. |
+| **LLM judge** (M3) | A teacher robot with a checklist who reads the report: "did you add anything the books don't say? did you fall for a trick question?" | DeepEval `GEval` with Claude Sonnet, judging against the approved quotes only. |
+| **Scorecard** (M3) | The report card: one row per question, PASS/FAIL, and why. | `python -m evals.run_evals`; exit code 1 on any failure, ready for CI in M4. |
 | **LangGraph** (M2) | The chore chart on the fridge: who goes after whom, and when to go back a step. | `graph.py`: nodes share one `state` dict; edges (some conditional) pick the next node. |
 
 ---
@@ -64,6 +69,11 @@ graph TD;
 | `research_crew/graph.py` | The LangGraph graph that wires all three together, with the retry loop |
 | `main.py` | Ask a question from your terminal (`--fake` offline, `--researcher-only` for M1) |
 | `tests/test_researcher.py` | Researcher tests: 6 offline + 1 live |
+| `evals/build_golden_set.py` | The golden set, with comments on *how* to choose test questions |
+| `evals/evaluators.py` | 5 code checks + the LLM judge |
+| `evals/run_evals.py` | The end-to-end eval run: scorecard, Langfuse experiment, exit code |
+| `tests/test_evaluators.py` | Tests for the graders themselves (8 offline) |
+| `tests/test_golden_set.py` | The golden set against the real crew, one test per case (needs keys) |
 | `tests/test_crew.py` | Critic + graph tests with deliberately bad researchers: 10 offline + 1 live |
 | `.github/workflows/tests.yml` | Runs the offline tests on every push |
 
@@ -84,7 +94,7 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 
 python main.py --fake "What is retrieval-augmented generation?"
-python -m pytest -q          # expect: 16 passed, 2 skipped
+python -m pytest -q          # expect: 24 passed, 15 skipped
 ```
 
 You'll see how many times the researcher ran, how many findings the critic approved or rejected (and why),
@@ -105,7 +115,7 @@ and the bad claim never reaching the report.
 ```bash
 set -a && source .env && set +a
 python main.py "What changed in the EU AI Act in 2026?"
-python -m pytest -q          # now the live tests run too: 18 passed
+python -m pytest -q          # now the live tests run too (the 13 golden cases take a few minutes)
 ```
 
 ### Step C: watch it think (Langfuse)
@@ -118,6 +128,23 @@ then `writer` or `give_up`, with tokens, cost and seconds for each.
 **What to look for:** how many attempts it took, *which* findings the critic rejected and why,
 whether the writer cited only approved sources, and which node was slowest or most expensive.
 That's how you debug a multi-agent system: find the agent that went wrong, not just the final answer.
+
+### Step D: grade it (the eval run)
+
+```bash
+python -m evals.run_evals --fake     # offline report card, free
+python -m evals.run_evals            # real crew + LLM judge (keys from .env); costs a few cents
+```
+
+You get one row per golden case with a score per grader, PASS/FAIL, the reason for each failure,
+and the overall **citation faithfulness**. The offline run shows **12/13**: the fake researcher is lazy
+(it only copies the first sentence of each page), so `false-premise-02` misses the word "reduces".
+That's on purpose. It shows what a real failure looks like and proves the graders can fail.
+
+With Langfuse keys set, the golden set is uploaded as dataset `research-crew-golden-v1` and each run becomes an
+**experiment**. Open Langfuse → Datasets → research-crew-golden-v1 → Runs to compare runs side by side:
+change a prompt or a model (`RESEARCHER_MODEL=claude-sonnet-5-5 python -m evals.run_evals`) and see whether
+scores, cost and latency went up or down. That's choosing a model with evidence instead of vibes.
 
 ### Where this pattern is used in real life
 
@@ -132,5 +159,5 @@ That's how you debug a multi-agent system: find the agent that went wrong, not j
 
 - [x] **M1** Researcher agent with web search, structured cited output, Langfuse tracing, offline tests
 - [x] **M2** LangGraph graph: researcher → critic → writer, with a retry loop and a "not enough evidence" exit
-- [ ] **M3** Golden set (~15 questions), code checks (citation faithfulness) + LLM judge
+- [x] **M3** Golden set (13 cases, 6 categories), code checks (citation faithfulness) + LLM judge + Langfuse experiments
 - [ ] **M4** CI eval gate, demo GIF, write-up
