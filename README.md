@@ -51,11 +51,15 @@ Around it: golden set, code checks, LLM judge (M3), Langfuse traces, and a CI qu
 
 ### Step A: run it offline, free, in 2 minutes
 
+Needs **Python 3.10+**. macOS's built-in `python3` is 3.8, so this uses [uv](https://docs.astral.sh/uv/),
+which downloads its own Python without touching the system one.
+
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh && source $HOME/.local/bin/env   # once per machine
 git clone https://github.com/Vindaru/-research-crew.git research-crew
 cd research-crew
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -r requirements.txt
 
 python main.py --fake "What is retrieval-augmented generation?"
 pytest -q          # expect: 5 passed, 1 skipped
