@@ -97,7 +97,7 @@ def test_fake_crew_answers_with_citations():
 
 
 def test_fake_crew_says_not_enough_evidence_when_nothing_is_found():
-    state = run_crew("Who won the 1987 chess olympiad?", fake=True)
+    state = run_crew("How many people attended the Glimmerfen Robotics Expo in 2029?", fake=True)
     assert state["report"].status == "insufficient_evidence"
 
 
@@ -110,3 +110,45 @@ def test_live_crew_report_cites_only_approved_sources():
     assert set(report.citations) <= approved_urls
     if report.status == "answered":
         assert cited_numbers(report.text), "an answered report must cite its sources"
+
+
+# ── regressions found by the first live run (2026-11-03) ───────────────────────────────
+def test_same_url_with_different_snippets_still_verifies_the_quote():
+    """Tavily returns a different snippet of the same page for different queries. The quote may be in either."""
+    first = Source(url="https://p.example", title="P", content="Part one says alpha.")
+    second = Source(url="https://p.example", title="P", content="Part two says beta.")
+    finding = Finding(claim="Alpha.", source_url="https://p.example", quote="Part one says alpha")
+    assert code_check(finding, [first, second]).ok
+
+
+class _FlakyJudge:
+    """Stands in for Claude's structured output: fails `failures` times, then answers."""
+    def __init__(self, failures, supported=True):
+        self.failures, self.supported, self.calls = failures, supported, 0
+
+    def invoke(self, messages, config=None):
+        from research_crew.critic import SupportCheck
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise ValueError("malformed structured output")
+        return SupportCheck(supported=self.supported, reason="judged")
+
+
+def test_critic_retries_once_when_the_judge_returns_garbage():
+    from research_crew.critic import critique
+    judge = _FlakyJudge(failures=1)
+    result = critique(ResearchNotes(question="q", findings=[TRUE]), [PAGE], callbacks=[], llm=judge)
+    assert result.approved == [TRUE] and judge.calls == 2
+
+
+def test_critic_fails_closed_when_the_judge_keeps_failing():
+    from research_crew.critic import critique
+    result = critique(ResearchNotes(question="q", findings=[TRUE]), [PAGE], callbacks=[], llm=_FlakyJudge(failures=5))
+    assert result.approved == [] and "could not judge" in result.rejected[0].reason
+
+
+def test_critic_rejects_a_real_quote_that_does_not_support_the_claim():
+    from research_crew.critic import critique
+    result = critique(ResearchNotes(question="q", findings=[TRUE]), [PAGE], callbacks=[],
+                      llm=_FlakyJudge(failures=0, supported=False))
+    assert "does not support" in result.rejected[0].reason

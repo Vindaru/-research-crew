@@ -63,8 +63,9 @@ def citations_valid(*, output, expected_output, **kwargs):
 
 
 def must_mention(*, output, expected_output, **kwargs):
-    wanted = expected_output["must_mention"]
-    missing = [w for w in wanted if w.lower() not in output["answer"].lower()]
+    wanted, answer = expected_output["must_mention"], output["answer"].lower()
+    # "a|b|c" = any one of these synonyms is enough
+    missing = [w for w in wanted if not any(option.lower() in answer for option in w.split("|"))]
     value = 1.0 if not wanted else (len(wanted) - len(missing)) / len(wanted)
     return Evaluation(name="must_mention", value=value, comment=f"missing {missing}" if missing else "all present")
 

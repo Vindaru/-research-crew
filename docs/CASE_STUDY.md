@@ -54,6 +54,22 @@ can't hide a regression. The gate requires **100%**.
 | Offline (fake crew) | 12 / 13 | 100% | The one failure is intentional: the fake researcher only reads first sentences |
 | Live (Claude Haiku agents, Sonnet judge) | _fill in after first live run_ | _fill in_ | _cost per run, slowest node from Langfuse_ |
 
+## What the first live run found (2026-11-03)
+
+The first run against the real web: **14 of 39 tests failed**. Every failure was real, and they sorted into
+three kinds of bug, which is the point of running evals before trusting an agent:
+
+| Failure | Root cause | Fix |
+|---|---|---|
+| Critic crashed with a Pydantic `ValidationError` (6 cases) | Asking the model for a *nested list* of verdicts in one call sometimes returned malformed structured output | One small call per finding with a flat 2-field schema, one retry, and **fail closed**: if the judge can't answer, the finding is rejected, never waved through |
+| `citation_faithfulness` below 100% on approved findings (5 cases) | **A bug in the checker, not the agent.** Tavily returns *different snippets of the same URL* for different queries; `{url: content}` kept only the last one, so a quote verified in attempt 1 "disappeared" by attempt 3 | Verify a quote against *every* snippet seen for that URL; regression test added |
+| `unanswerable-01` answered | **A bug in the golden set.** "Who won the 1987 chess olympiad?" is on Wikipedia. The case was wrong, not the agent | Replaced with a made-up event |
+| `must_mention` / `must_not_say` misses (2 cases) | Keywords tuned to the offline fixtures; and "was discontinued" also matched the *correct* answer "no evidence it was discontinued" | Synonym lists (`reduce\|lower`), and must-not-say targets agreeing phrasing ("discontinued because"); meaning is left to the LLM judge |
+| `deepeval` not found (1 case) | Local environment not reinstalled after a dependency was added | `uv pip install -r requirements.txt` |
+
+**Lesson:** a failing eval has three suspects (the agent, the grader, and the test case), and each one was guilty
+at least once here. Offline fixtures can't find any of these; only a live run can.
+
 ## Trade-offs and what I'd do next
 
 - **Exact-quote matching is strict.** Paraphrased-but-true findings get rejected and cost a retry. Next: allow a

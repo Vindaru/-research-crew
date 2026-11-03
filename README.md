@@ -104,12 +104,12 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 
 python main.py --fake "What is retrieval-augmented generation?"
-python -m pytest -q          # expect: 29 passed, 15 skipped
+python -m pytest -q          # expect: 34 passed, 15 skipped
 ```
 
 You'll see how many times the researcher ran, how many findings the critic approved or rejected (and why),
 then the writer's report with `[1]`, `[2]` citations and the URL list. Try a question the fixtures can't answer
-(`python main.py --fake "Who won the 1987 chess olympiad?"`) and the crew says **insufficient_evidence**
+(`python main.py --fake "How many people attended the Glimmerfen Robotics Expo in 2029?"`) and the crew says **insufficient_evidence**
 instead of guessing. Add `--researcher-only` to see just the M1 notes.
 
 To *see* the retry loop without an API key, read `tests/test_crew.py`: `liar_then_honest` is a researcher that

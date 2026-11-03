@@ -24,10 +24,14 @@ def _normalize(text: str) -> str:
 
 
 def code_check(finding: Finding, sources: list[Source]) -> Verdict:
-    pages = {s.url: s.content for s in sources}
-    if finding.source_url not in pages:
+    # The same URL can come back from several searches with DIFFERENT snippets (Tavily returns the part of the
+    # page that matches each query). So a quote is real if it appears in ANY snippet we saw for that URL.
+    # (Bug found by the first live run: a dict {url: content} kept only the last snippet.)
+    snippets = [s.content for s in sources if s.url == finding.source_url]
+    if not snippets:
         return Verdict(finding=finding, ok=False, reason="it cites a page the search never returned")
-    if not finding.quote.strip() or _normalize(finding.quote) not in _normalize(pages[finding.source_url]):
+    quote = _normalize(finding.quote)
+    if not quote or not any(quote in _normalize(text) for text in snippets):
         return Verdict(finding=finding, ok=False, reason="its quote does not appear word for word in the cited page")
     return Verdict(finding=finding, ok=True, reason="quote found in the cited page")
 
@@ -37,36 +41,44 @@ def critique_fake(notes: ResearchNotes, sources: list[Source], callbacks=None) -
     return Critique(verdicts=[code_check(f, sources) for f in notes.findings])
 
 
-class _SupportCheck(BaseModel):
-    index: int
+class SupportCheck(BaseModel):
+    """Deliberately flat: two plain fields. The first live run showed that asking for a nested list
+    (checks: [{index, supported, reason}, ...]) in one call sometimes came back malformed and crashed the run."""
     supported: bool
     reason: str = Field(description="One sentence")
 
 
-class _SupportChecks(BaseModel):
-    checks: list[_SupportCheck]
-
-
-SUPPORT_PROMPT = """You are a strict fact-checking critic. For each numbered item you get a CLAIM and a QUOTE.
+SUPPORT_PROMPT = """You are a strict fact-checking critic. You get one CLAIM and one QUOTE.
 Decide only this: does the QUOTE by itself fully support the CLAIM? Do not use outside knowledge.
 If the claim adds anything the quote does not say (a name, a number, a date, a stronger word), it is NOT supported."""
 
 
-def critique(notes: ResearchNotes, sources: list[Source], callbacks=None) -> Critique:
-    """Real critic: code check first, then one Claude call to judge support for the findings that passed it."""
-    from langchain_anthropic import ChatAnthropic
+def support_check(finding: Finding, llm, config) -> Verdict:
+    """One small Claude call per finding. Fails CLOSED: if the judge can't answer, the finding is rejected,
+    never waved through, because an unchecked citation is exactly what this project exists to stop."""
+    for _ in range(2):  # one retry for a malformed answer
+        try:
+            result = llm.invoke([("system", SUPPORT_PROMPT),
+                                 ("user", f"CLAIM: {finding.claim}\nQUOTE: {finding.quote}")], config=config)
+            break
+        except Exception as error:  # noqa: BLE001  (bad structured output, rate limit, network)
+            last_error = error
+    else:
+        return Verdict(finding=finding, ok=False, reason=f"the critic could not judge it ({type(last_error).__name__})")
+    if not result.supported:
+        return Verdict(finding=finding, ok=False, reason=f"the quote does not support the claim: {result.reason}")
+    return Verdict(finding=finding, ok=True, reason="quote found and supports the claim")
 
-    verdicts = [code_check(f, sources) for f in notes.findings]
-    to_judge = [i for i, v in enumerate(verdicts) if v.ok]
-    if to_judge:
-        items = "\n\n".join(f"[{i}] CLAIM: {verdicts[i].finding.claim}\n    QUOTE: {verdicts[i].finding.quote}"
-                            for i in to_judge)
-        llm = ChatAnthropic(model=CRITIC_MODEL).with_structured_output(_SupportChecks)
-        result = llm.invoke([("system", SUPPORT_PROMPT), ("user", items)],
-                            config={"callbacks": callbacks if callbacks is not None else langfuse_callbacks(),
-                                    "run_name": "critic"})
-        for check in result.checks:
-            if check.index in to_judge and not check.supported:
-                verdicts[check.index] = Verdict(finding=verdicts[check.index].finding, ok=False,
-                                                reason=f"the quote does not support the claim: {check.reason}")
+
+def critique(notes: ResearchNotes, sources: list[Source], callbacks=None, llm=None) -> Critique:
+    """Real critic: free code check first, then a Claude support check only for findings that passed it."""
+    if llm is None:
+        from langchain_anthropic import ChatAnthropic
+
+        llm = ChatAnthropic(model=CRITIC_MODEL).with_structured_output(SupportCheck)
+    config = {"callbacks": callbacks if callbacks is not None else langfuse_callbacks(), "run_name": "critic"}
+    verdicts = []
+    for finding in notes.findings:
+        verdict = code_check(finding, sources)
+        verdicts.append(support_check(finding, llm, config) if verdict.ok else verdict)
     return Critique(verdicts=verdicts)

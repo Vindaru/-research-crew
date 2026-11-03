@@ -15,7 +15,7 @@ jobs:
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-      LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+      LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
     steps:
       - name: Check secrets
         if: env.ANTHROPIC_API_KEY == '' || env.TAVILY_API_KEY == ''
