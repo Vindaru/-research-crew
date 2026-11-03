@@ -19,6 +19,7 @@ from pathlib import Path
 from langfuse import Langfuse
 
 from evals.evaluators import DETERMINISTIC, crew_output, llm_judge
+from research_crew.cost import cost_summary, format_cost
 from research_crew.graph import run_crew
 
 DATASET = "research-crew-golden-v1"
@@ -80,6 +81,8 @@ def main():
     gate = quality_gate(rows, total=len(data), min_pass_rate=opts.min_pass_rate,
                         min_faithfulness=opts.min_faithfulness)
     print(gate["message"])
+    if not opts.fake:
+        print(format_cost(cost_summary()) + ("  (agents only; the LLM judge adds ~1-2 cents per case)" if use_judge else ""))
     if result.experiment_url:
         print(f"Langfuse: {result.experiment_url}")
     if opts.summary:

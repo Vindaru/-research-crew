@@ -104,7 +104,7 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 
 python main.py --fake "What is retrieval-augmented generation?"
-python -m pytest -q          # expect: 34 passed, 15 skipped
+python -m pytest -q          # expect: 37 passed, 15 skipped
 ```
 
 You'll see how many times the researcher ran, how many findings the critic approved or rejected (and why),
@@ -155,6 +155,19 @@ With Langfuse keys set, the golden set is uploaded as dataset `research-crew-gol
 **experiment**. Open Langfuse → Datasets → research-crew-golden-v1 → Runs to compare runs side by side:
 change a prompt or a model (`RESEARCHER_MODEL=claude-sonnet-5-5 python -m evals.run_evals`) and see whether
 scores, cost and latency went up or down. That's choosing a model with evidence instead of vibes.
+
+### What does it cost?
+
+Every real run prints its cost at the end, counted from the tokens Claude actually used:
+```
+Cost: $0.0041
+  claude-haiku-5-5: 21,310 input + 3,904 output tokens = $0.0041
+```
+(`research_crew/cost.py` keeps the price table; prices are US$ per million tokens.)
+`python -m evals.run_evals` prints the total for the whole golden set. The LLM judge (Sonnet) is extra,
+about 1-2 cents per graded case. Tavily searches use your free monthly credits.
+Your real bill: console.anthropic.com → Usage / Cost, and app.tavily.com → Usage. With Langfuse on,
+every trace shows its own token cost too.
 
 ### Step E: the quality gate in CI
 

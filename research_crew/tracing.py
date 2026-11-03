@@ -7,9 +7,12 @@ import os
 
 
 def langfuse_callbacks() -> list:
+    """Default callbacks for every agent call: the cost counter always, Langfuse when keys are set."""
+    from research_crew.cost import usage_tracker
+
     if not os.getenv("LANGFUSE_PUBLIC_KEY"):
         logging.getLogger("langfuse").setLevel(logging.CRITICAL)
-        return []
+        return [usage_tracker]
     from langfuse.langchain import CallbackHandler
 
-    return [CallbackHandler()]
+    return [usage_tracker, CallbackHandler()]
